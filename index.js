@@ -1,7 +1,6 @@
 import init from './pkg/web_3d.js';
 import {Universe} from './pkg/web_3d.js';
 
-
 let canvas = document.getElementById("canvas");
 let gl = canvas.getContext('webgl');
 

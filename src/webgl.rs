@@ -37,7 +37,7 @@ impl Engine {
         );
 
         self.gl.clear(GL::COLOR_BUFFER_BIT);
-        self.gl.draw_elements_with_i32(GL::LINES, self.n_indices, GL::UNSIGNED_SHORT, 0)
+        self.gl.draw_elements_with_i32(GL::TRIANGLES, self.n_indices, GL::UNSIGNED_SHORT, 0)
     }
     pub fn width(&self) -> u32 {self.gl.drawing_buffer_width() as u32}
     pub fn height(&self) -> u32 {self.gl.drawing_buffer_height() as u32}

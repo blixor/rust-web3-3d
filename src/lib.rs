@@ -9,7 +9,7 @@ use webgl::Engine;
 mod camera;
 use camera::Camera;
 
-mod shape;
+mod geometry;
 
 #[wasm_bindgen]
 pub struct Universe {
@@ -30,8 +30,6 @@ impl Universe {
 
     pub fn update(&mut self, t: u32, left: bool, right: bool, down: bool, up: bool) {
 
-        //let s = ((t/3000) as f32).cos();
-
         let dt = (t - self.t_update) as f32 / 1000.0;
 
 
@@ -43,7 +41,7 @@ impl Universe {
 
         if self.t_update % 5 == 0 {
             // update landscape
-            let (test_points, test_index) = shape::test_cube(0.5);
+            let (test_points, test_index) = geometry::test_sphere(1.0, true);
             self.engine.update_triangles(test_points, test_index);
         }
 

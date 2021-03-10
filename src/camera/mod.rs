@@ -33,6 +33,6 @@ impl Camera {
             self.x*sin+self.y*cos, -self.z, self.x*cos-self.y*sin, 1.0
         ];
 
-        matrix::mult(matrix::projection(a, 0.5, 500.0), inv_cam)
+        matrix::mult(matrix::projection(a, 0.01, 500.0), inv_cam)
     }
 }
