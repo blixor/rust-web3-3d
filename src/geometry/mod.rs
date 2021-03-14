@@ -1,9 +1,13 @@
 mod vec_3d;
 use vec_3d::V3;
 
+// a vertex currently has 6 values: x, y, z and r, g, b
+const SIZE_VERTEX : usize = 6;
+const SIZE_VERTEX_U16 : u16 = 6;
+
 
 fn get_point(points: &Vec<f32>, i: u16) -> V3 {
-    let i = (i*6) as usize;
+    let i = (i*SIZE_VERTEX_U16) as usize;
     V3::new(
         points[i],
         points[i+1],
@@ -57,7 +61,7 @@ pub fn test_sphere(scale: f32, shading_enabled: bool) -> (Vec<f32>, Vec<u16>) {
 
 fn shade(points: &mut Vec<f32>, indices: &Vec<u16>, light_dir: V3) {
     // this vector will store the average normal of each point
-    let mut normals_by_point = vec![V3::null(); points.len()/6];
+    let mut normals_by_point = vec![V3::null(); points.len()/SIZE_VERTEX];
 
     for i in (0..indices.len()).step_by(3) {
         let p1 = get_point(points, indices[i  ]);
@@ -75,9 +79,9 @@ fn shade(points: &mut Vec<f32>, indices: &Vec<u16>, light_dir: V3) {
 
     for (i, &v) in normals_by_point.iter().enumerate() {
         let brightness = V3::dot(v.normalize(), light_dir); // ⚠ normalize
-        points[i*6+3] += brightness;
-        points[i*6+4] += brightness;
-        points[i*6+5] += brightness;
+        points[i*SIZE_VERTEX+3] += brightness;
+        points[i*SIZE_VERTEX+4] += brightness;
+        points[i*SIZE_VERTEX+5] += brightness;
     }
 }
 

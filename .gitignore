@@ -2,3 +2,5 @@ pkg/
 target/
 Cargo.lock
 my_build.sh
+src/geometry/noise.rs
+Cargo.toml

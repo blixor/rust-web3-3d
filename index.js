@@ -102,19 +102,10 @@ const FPS_THROTTLE = 1000.0 / 20.0;
 let lastDrawTime = -1;
 
 
-//unction game_loop() {
- //       if (pressedKeys[37]) {demo.rotate(0.05)};
- //       if (pressedKeys[39]) {demo.rotate(-0.05)};
- //       if (pressedKeys[40]) {demo.forward(-0.06)};
- //       if (pressedKeys[38]) {demo.forward(0.06)};
-
- //       // only change position of player, not environment
-//}
-
 function universe_loop() {
         // change environment
-        //                        left arrow       right arrow      down arrow       up arrow
-        demo.update(lastDrawTime, pressedKeys[37], pressedKeys[39], pressedKeys[40], pressedKeys[38]); 
+        //                        left arrow       right arrow      down arrow       up arrow         space            shift
+        demo.update(lastDrawTime, pressedKeys[37], pressedKeys[39], pressedKeys[40], pressedKeys[38], pressedKeys[32], pressedKeys[16]); 
 }
 
 function render() {
