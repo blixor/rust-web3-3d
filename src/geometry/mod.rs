@@ -14,11 +14,10 @@ fn get_point(points: &Vec<f32>, i: u16) -> V3 {
         points[i+2])
 }
 
-pub fn test_sphere(scale: f32, shading_enabled: bool) -> (Vec<f32>, Vec<u16>) {
+fn sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radius: f32) {
+    let i0 = points.len()/SIZE_VERTEX;
     let n = 100usize;
-    let mut points = Vec::with_capacity(n*n*6usize);
-    let mut indices = Vec::<u16>::new();
-    let pi = 3.0;
+    let pi = 3.2;
 
     // create points
     for long in 0..n {
@@ -26,9 +25,9 @@ pub fn test_sphere(scale: f32, shading_enabled: bool) -> (Vec<f32>, Vec<u16>) {
             let a1 = lat as f32 / (n as f32 - 1.0) * 2.0 * pi;
             let a2 = long as f32 / (n as f32 - 1.0) * pi;
 
-            points.push(a1.cos()*a2.sin()*scale); // x
-            points.push(a1.sin()*a2.sin()*scale); // y
-            points.push(a2.cos()         *scale); // z
+            points.push(center.x+a1.cos()*a2.sin()*radius); // x
+            points.push(center.y+a1.sin()*a2.sin()*radius); // y
+            points.push(center.z+a2.cos()         *radius); // z
 
             points.push(0.3); // r
             points.push(0.5); // g
@@ -38,8 +37,9 @@ pub fn test_sphere(scale: f32, shading_enabled: bool) -> (Vec<f32>, Vec<u16>) {
 
     // create triangles
     for long in 0..n-1 {
-        for lat in 0..n {
-            let p = (long*n + lat, long*n + (lat+1)%n, (long+1)*n + lat, (long+1)*n + (lat + 1)%n);
+        for lat in 0..n-1 {
+            let i = i0 + long*n+lat;
+            let p = (i, i+1, i+n, i+n+1);
             indices.push(p.0 as u16);
             indices.push(p.1 as u16);
             indices.push(p.3 as u16);
@@ -50,16 +50,19 @@ pub fn test_sphere(scale: f32, shading_enabled: bool) -> (Vec<f32>, Vec<u16>) {
 
         }
     }
+}
 
-    if shading_enabled {
-        shade(&mut points, &indices, V3::new(0.4, 0.4, 0.4));
-    }
-    (points, indices)
+pub fn test_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
+    sphere(points, indices, V3::new(0.0, 0.0, 0.0), 0.5);
+    sphere(points, indices, V3::new(0.5, 0.5, 0.5), 0.5);
+    sphere(points, indices, V3::new(-1.5, 0.0, -1.5), 0.5);
 }
 
 
 
-fn shade(points: &mut Vec<f32>, indices: &Vec<u16>, light_dir: V3) {
+pub fn shade(points: &mut Vec<f32>, indices: &Vec<u16>) {
+    let light_dir : V3 = V3::new(0.2, 0.2, 0.2);
+
     // this vector will store the average normal of each point
     let mut normals_by_point = vec![V3::null(); points.len()/SIZE_VERTEX];
 
@@ -85,36 +88,37 @@ fn shade(points: &mut Vec<f32>, indices: &Vec<u16>, light_dir: V3) {
     }
 }
 
-
-//pub fn test_plane() -> (Vec<f32>, Vec<u16>) {
-//    let mut points = Vec::new();
-//    let mut indices = Vec::new();
-//    let n = 30usize;
-//    for ix in 0..n {
-//        for iy in 0..n {
-//            let x = ix as f32 / (n as f32);
-//            let y = iy as f32 / (n as f32);
+//pub fn rand_surface(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
+//    let perlin = Perlin::new((0.0, 5.0), (0.0, 5.0), 10, 10);
+//    let i0 = points.len()/SIZE_VERTEX;
+//    let n = 40usize;
+//    for x in 0..n {
+//        for y in 0..n {
+//            let x = x as f32 / 9.0;
+//            let y = y as f32 / 9.0;
+//            let z = perlin.noise(0.2*x,0.2* y);
 //            points.push(x);
 //            points.push(y);
-//            points.push(0.0);
-//
-//            points.push(0.5);
-//            points.push(0.5);
-//            points.push(0.5);
+//            points.push(z);
+//            points.push(0.7);
+//            points.push(0.7);
+//            points.push(0.8);
 //        }
 //    }
-//    for ix in 0..n-1 {
-//        for iy in 0..n-1 {
-//            let p = (iy*n+ix, iy*n+ix+1, (iy+1)*n+ix, (iy+1)*n+ix+1);
+//
+//    for x in 0..n-1 {
+//        for y in 0..n-1 {
+//            let i = i0 + y*n+x;
+//            let p = (i, i+1, i+n, i+n+1);
 //            indices.push(p.0 as u16);
 //            indices.push(p.1 as u16);
-//            indices.push(p.2 as u16);
+//            indices.push(p.3 as u16);
 //
-//            indices.push(p.1 as u16);
+//            indices.push(p.0 as u16);
 //            indices.push(p.3 as u16);
 //            indices.push(p.2 as u16);
 //        }
 //    }
-//    shade(&mut points, &indices, V3::new(0.3, 0.3, 0.3));
-//    (points, indices)
 //}
+
+
