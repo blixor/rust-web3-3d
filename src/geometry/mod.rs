@@ -1,6 +1,8 @@
 mod vec_3d;
 use vec_3d::V3;
 
+mod noise;
+
 // a vertex currently has 6 values: x, y, z and r, g, b
 const SIZE_VERTEX : usize = 6;
 const SIZE_VERTEX_U16 : u16 = 6;
@@ -41,27 +43,25 @@ fn sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radius: f32
             let i = i0 + long*n+lat;
             let p = (i, i+1, i+n, i+n+1);
             indices.push(p.0 as u16);
-            indices.push(p.1 as u16);
             indices.push(p.3 as u16);
+            indices.push(p.1 as u16);
 
             indices.push(p.0 as u16);
-            indices.push(p.3 as u16);
             indices.push(p.2 as u16);
+            indices.push(p.3 as u16);
 
         }
     }
 }
 
 pub fn test_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
-    sphere(points, indices, V3::new(0.0, 0.0, 0.0), 0.5);
-    sphere(points, indices, V3::new(0.5, 0.5, 0.5), 0.5);
-    sphere(points, indices, V3::new(-1.5, 0.0, -1.5), 0.5);
+    sphere(points, indices, V3::new(0.0, 0.0, 1.0), 0.7);
 }
 
 
 
 pub fn shade(points: &mut Vec<f32>, indices: &Vec<u16>) {
-    let light_dir : V3 = V3::new(0.2, 0.2, 0.2);
+    let light_dir : V3 = V3::new(0.3, 0.3, 0.3);
 
     // this vector will store the average normal of each point
     let mut normals_by_point = vec![V3::null(); points.len()/SIZE_VERTEX];
@@ -88,37 +88,38 @@ pub fn shade(points: &mut Vec<f32>, indices: &Vec<u16>) {
     }
 }
 
-//pub fn rand_surface(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
-//    let perlin = Perlin::new((0.0, 5.0), (0.0, 5.0), 10, 10);
-//    let i0 = points.len()/SIZE_VERTEX;
-//    let n = 40usize;
-//    for x in 0..n {
-//        for y in 0..n {
-//            let x = x as f32 / 9.0;
-//            let y = y as f32 / 9.0;
-//            let z = perlin.noise(0.2*x,0.2* y);
-//            points.push(x);
-//            points.push(y);
-//            points.push(z);
-//            points.push(0.7);
-//            points.push(0.7);
-//            points.push(0.8);
-//        }
-//    }
-//
-//    for x in 0..n-1 {
-//        for y in 0..n-1 {
-//            let i = i0 + y*n+x;
-//            let p = (i, i+1, i+n, i+n+1);
-//            indices.push(p.0 as u16);
-//            indices.push(p.1 as u16);
-//            indices.push(p.3 as u16);
-//
-//            indices.push(p.0 as u16);
-//            indices.push(p.3 as u16);
-//            indices.push(p.2 as u16);
-//        }
-//    }
-//}
+pub fn rand_surface(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
+    let perlin_1 = noise::Perlin::new((0.0, 18.0), (0.0, 18.0), 5, 5, 4.0);
+    let perlin_2 = noise::Perlin::new((0.0, 18.0), (0.0, 18.0), 20, 20, 0.5);
+    let i0 = points.len()/SIZE_VERTEX;
+    let n = 60usize;
+    for x in 0..n {
+        for y in 0..n {
+            let x = x as f32 / 8.0;
+            let y = y as f32 / 8.0;
+            let z = perlin_1.noise(x, y)+perlin_2.noise(x, y)-2.0;
+            points.push(x);
+            points.push(y);
+            points.push(z);
+            points.push(0.7);
+            points.push(0.4);
+            points.push(0.3);
+        }
+    }
+
+    for x in 0..n-1 {
+        for y in 0..n-1 {
+            let i = i0 + y*n+x;
+            let p = (i, i+1, i+n, i+n+1);
+            indices.push(p.0 as u16);
+            indices.push(p.3 as u16);
+            indices.push(p.1 as u16);
+
+            indices.push(p.0 as u16);
+            indices.push(p.2 as u16);
+            indices.push(p.3 as u16);
+        }
+    }
+}
 
 

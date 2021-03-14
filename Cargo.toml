@@ -18,6 +18,7 @@ version = "0.3.4"
 features = [
   'WebGlRenderingContext',
   'WebGlUniformLocation',
+  'console',
 ]
 
 # [package.metadata.wasm-pack.profile.release]
