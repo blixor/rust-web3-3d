@@ -23,9 +23,9 @@ pub struct Universe {
 #[wasm_bindgen]
 impl Universe {
     #[wasm_bindgen(constructor)]
-    pub fn new(gl: GL, trans_location: WebGlUniformLocation, t: u32) -> Self {
+    pub fn new(gl: GL, trans_location: WebGlUniformLocation, time_location: WebGlUniformLocation, t: u32) -> Self {
         let camera = Camera {x:2.0, y:-2.0, z:2.0, angle:1.80};
-        let engine = Engine {gl, trans_location, n_indices: 0i32};
+        let engine = Engine {gl, trans_location, time_location, n_indices: 0i32};
         Self {engine, camera, n_update: 0, last_update: t}
     }
 
@@ -46,9 +46,8 @@ impl Universe {
             // update landscape
             let mut points   = Vec::with_capacity(100000);
             let mut indices = Vec::with_capacity(100000);
-            //geometry::test_sphere(&mut points, &mut indices);
-            geometry::rand_surface(&mut points, &mut indices);
             geometry::test_sphere(&mut points, &mut indices);
+            geometry::rand_surface(&mut points, &mut indices);
             geometry::shade(&mut points, &mut indices);
 
             self.engine.update_triangles(points, indices);
@@ -64,10 +63,14 @@ impl Universe {
 
     }
 
-    pub fn render(&mut self){
+    pub fn render(&mut self, t: u32){
+        let time = (t as f32) * 0.001;
+
         self.engine.render(self.camera.get_transform(
                                 self.engine.width(), 
-                                self.engine.height()));
+                                self.engine.height()),
+                            time
+            );
     }
 }
 

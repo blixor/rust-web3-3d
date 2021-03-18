@@ -6,6 +6,7 @@ use js_sys::*;
 pub struct Engine {
     pub gl: GL,
     pub trans_location: WebGlUniformLocation,
+    pub time_location: WebGlUniformLocation,
     pub n_indices: i32, 
 }
 
@@ -29,11 +30,16 @@ impl Engine {
         self.n_indices = index_data.len() as i32;
     }
 
-    pub fn render(&self, transform: [f32; 16] ) {
+    pub fn render(&self, transform: [f32; 16], time: f32) {
         self.gl.uniform_matrix4fv_with_f32_array(
             Some(&self.trans_location),
             false,
             &transform,
+        );
+
+        self.gl.uniform1f(
+            Some(&self.time_location),
+            time
         );
 
         self.gl.clear(GL::COLOR_BUFFER_BIT);

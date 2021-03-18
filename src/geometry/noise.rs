@@ -1,6 +1,6 @@
 use getrandom;
 
-fn rand_float() -> f32 {
+pub fn rand_float() -> f32 {
    let mut buff = [0; 2];
    getrandom::getrandom(&mut buff).unwrap();
    let (a, b) = (buff[0] as f32, buff[1] as f32);

@@ -21,15 +21,23 @@ void main(void) {
 let vertexShaderCode = `
 attribute vec4 coordinates;
 uniform mat4 projection;
+uniform float time;
 
 attribute vec3 color;
+attribute vec3 ondulation_vec;
+attribute float frequency;
+attribute float phase;
+
 varying vec4 v_color;
+
 void main() {
-        gl_Position = projection * coordinates;
+        vec4 shift = vec4(cos(time*frequency+phase) * ondulation_vec, 1.0);
+        gl_Position = projection * (coordinates + shift);
         v_color = vec4(color, 0.5); 
 }
 `
 
+console.log(vertexShaderCode);
 
 
 // setup color
@@ -47,6 +55,7 @@ gl.compileShader(vertShader);
 var fragShader = gl.createShader(gl.FRAGMENT_SHADER);
 gl.shaderSource(fragShader, fragmentShaderCode);
 gl.compileShader(fragShader);
+
 var shaderProgram = gl.createProgram();
 gl.attachShader(shaderProgram, vertShader); 
 gl.attachShader(shaderProgram, fragShader);
@@ -55,33 +64,58 @@ gl.useProgram(shaderProgram);
 
 
 
-// setup WEBGL buffers
-
+// _            __  __               
+//| |__  _   _ / _|/ _| ___ _ __ ___ 
+//| '_ \| | | | |_| |_ / _ \ '__/ __|
+//| |_) | |_| |  _|  _|  __/ |  \__ \
+//|_.__/ \__,_|_| |_|  \___|_|  |___/
+                                   
+// index buffer
 var index_buffer = gl.createBuffer();
 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
 
-//Get the attribute location	
-let coord_loc = gl.getAttribLocation(shaderProgram, "coordinates");
-let color_loc = gl.getAttribLocation(shaderProgram, "color");
 
+
+// point buffer
 let point_buffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, point_buffer);
 
 
-gl.vertexAttribPointer(coord_loc, 3, gl.FLOAT, false, 
-        6 * Float32Array.BYTES_PER_ELEMENT, 
-        0
-);
-gl.enableVertexAttribArray(coord_loc);
+let SIZE_VERTEX = 12;
+/* The POINT buffer has 12 elements:
+ * x y z      |      r g b      |      dx dy dz     | frequency phase other
+ * position          color       ondulation vector    other params of point
+ */
+
+//Get the attribute location in the programm
+let coord_loc = gl.getAttribLocation(shaderProgram, "coordinates");
+let color_loc = gl.getAttribLocation(shaderProgram, "color");
+let ondulation_loc = gl.getAttribLocation(shaderProgram, "ondulation_vec");
+let phase_loc = gl.getAttribLocation(shaderProgram, "phase");
+let frequency_loc = gl.getAttribLocation(shaderProgram, "frequency");
 
 
-gl.vertexAttribPointer(color_loc, 3, gl.FLOAT, false,
-        6 * Float32Array.BYTES_PER_ELEMENT,
-        3 * Float32Array.BYTES_PER_ELEMENT
-);
-gl.enableVertexAttribArray(color_loc);
+function define_float_point_buffer(loc, size, offset) {
+        gl.vertexAttribPointer(loc, size, gl.FLOAT, false,
+        SIZE_VERTEX * Float32Array.BYTES_PER_ELEMENT, 
+        offset      * Float32Array.BYTES_PER_ELEMENT);
+
+        gl.enableVertexAttribArray(loc);
+}
+
+define_float_point_buffer(coord_loc, 3, 0);
+define_float_point_buffer(color_loc, 3, 3);
+define_float_point_buffer(ondulation_loc, 3, 6);
+define_float_point_buffer(frequency_loc, 1, 9);
+define_float_point_buffer(phase_loc, 1, 10);
+
+
+
+
+// uniforms (values passed to vertex shader)
 
 let trans_loc = gl.getUniformLocation(shaderProgram, "projection");
+let time_loc = gl.getUniformLocation(shaderProgram, "time");
 
 
 
@@ -102,10 +136,11 @@ const FPS_THROTTLE = 1000.0 / 20.0;
 let lastDrawTime = -1;
 
 
+// controlls : left arrow, right arrow, down arrow, up arrow, space, shift
+function get_controlls() {return [37, 39, 40, 38, 32, 9].map(i => pressedKeys[i])}
+
 function universe_loop() {
-        // change environment
-        //                        left arrow       right arrow      down arrow       up arrow         space            shift
-        demo.update(lastDrawTime, pressedKeys[37], pressedKeys[39], pressedKeys[40], pressedKeys[38], pressedKeys[32], pressedKeys[16]); 
+        demo.update(lastDrawTime, ...get_controlls()); 
 }
 
 function render() {
@@ -125,13 +160,13 @@ function render() {
                 let t = currTime - initialTime;
 
                 // render without changing environment
-                demo.render();
+                demo.render(t);
         }
 
 
         requestAnimationFrame(render);
 }
 
-init().then(() => {demo=new Universe(gl, trans_loc, Date.now())}).then(() => {
+init().then(() => {demo=new Universe(gl, trans_loc, time_loc, Date.now())}).then(() => {
         setInterval(universe_loop, FPS_THROTTLE/3);
 }).then(render);
