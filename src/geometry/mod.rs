@@ -16,6 +16,7 @@ fn get_point(points: &Vec<f32>, i: u16) -> V3 {
 }
 
 fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radius: f32, color: (f32, f32, f32)) {
+    let frequency = 0.3+noise::rand_float();
     let i0 = points.len()/SIZE_VERTEX;
     let n = 30usize;
     let pi = 3.15;
@@ -38,7 +39,7 @@ fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radi
             points.push(noise::rand_float());
             points.push(noise::rand_float());
 
-            points.push(1.0);
+            points.push(frequency);
             points.push(0.0);
             points.push(0.0);
         }
