@@ -2,6 +2,7 @@ mod vec_3d;
 use vec_3d::V3;
 
 mod noise;
+mod random;
 
 // a vertex currently has 12 values: x, y, z  |  r, g, b and so on
 const SIZE_VERTEX : usize = 12;
@@ -16,10 +17,13 @@ fn get_point(points: &Vec<f32>, i: u16) -> V3 {
 }
 
 fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radius: f32, color: (f32, f32, f32)) {
-    let frequency = 0.3+noise::rand_float();
+    let frequency = 0.3+random::rand_float();
     let i0 = points.len()/SIZE_VERTEX;
     let n = 30usize;
     let pi = 3.15;
+
+    let range = (V3::new(-2.1, -2.1, -2.1), V3::new(2.1, 2.1, 2.1));
+    let phase_noise = noise::Perlin::new(range, (5, 5, 5), 1.5);
 
     // create points
     for long in 0..n {
@@ -27,20 +31,27 @@ fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radi
             let a1 = lat as f32 / (n as f32) * 2.0 * pi;
             let a2 = long as f32 / (n as f32 -1.0) * pi;
 
-            points.push(center.x+a1.cos()*a2.sin()*radius); // x
-            points.push(center.y+a1.sin()*a2.sin()*radius); // y
-            points.push(center.z+a2.cos()         *radius); // z
+            let p = V3::new(
+                a1.cos()*a2.sin(), 
+                a1.sin()*a2.sin(),
+                a2.cos()         ,
+            );
+
+            points.push(center.x+p.x*radius); // x
+            points.push(center.y+p.y*radius); // y
+            points.push(center.z+p.z*radius); // z
 
             points.push(color.0); // r
             points.push(color.1); // g
             points.push(color.2); // b
 
-            points.push(noise::rand_float());
-            points.push(noise::rand_float());
-            points.push(noise::rand_float());
+            let v = random::rand_v3();
+            points.push(v.x);
+            points.push(v.y);
+            points.push(v.z);
 
             points.push(frequency);
-            points.push(0.0);
+            points.push(phase_noise.noise(p));
             points.push(0.0);
         }
     }
@@ -73,9 +84,10 @@ fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radi
 }
 
 pub fn test_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
-    use noise::rand_float;
-    for _ in 0..10 {
-        let center = V3::new(rand_float(), rand_float(), rand_float()).scale(20.0); 
+    use random::rand_float;
+    for _ in 0..30 {
+        let v = random::rand_v3().scale(20.0+rand_float()*40.0);
+        let center = V3::new(v.x, v.y, 2.0+rand_float()*8.0);
         let color = (rand_float(), rand_float(), rand_float());
         pseudo_sphere(points, indices, center, rand_float(), color);
     }
@@ -84,19 +96,21 @@ pub fn test_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
 
 
 pub fn rand_surface(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
-    // fractal noise 
-    let perlin_1 = noise::Perlin::new((0.0, 58.0), (0.0, 58.0), 5, 5, 6.0);
-    let perlin_2 = noise::Perlin::new((0.0, 58.0), (0.0, 58.0), 20, 20, 0.5);
+    // we generate fractal noise with 2d slices of 3d perlin noise
+    let range = (V3::new(-100.0, -100.0, -1.0), V3::new(100.0, 100.0, 1.0));
+    let perlin_1 = noise::Perlin::new(range, (5, 5, 3), 15.0);
+    let perlin_2 = noise::Perlin::new(range, (30, 30, 3), 5.5);
 
-    let phase_noise = noise::Perlin::new((0.0, 58.0), (0.0, 58.0), 20, 20, 6.3);
+    let phase_noise = noise::Perlin::new(range, (30, 30, 3), 6.28);
 
     let i0 = points.len()/SIZE_VERTEX;
-    let n = 80usize;
+    let n = 100usize;
     for x in 0..n {
         for y in 0..n {
-            let x = x as f32 / 3.0;
-            let y = y as f32 / 3.0;
-            let z = perlin_1.noise(x, y)+perlin_2.noise(x, y)-4.0;
+            let x = x as f32-50.0+0.5; 
+            let y = y as f32-50.0;
+            let v = V3::new(x, y, 0.0);
+            let z = perlin_1.noise(v)+perlin_2.noise(v)-4.0;
             // position
             points.push(x);
             points.push(y);
@@ -114,7 +128,7 @@ pub fn rand_surface(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
 
             // frequency, phase
             points.push(1.0);
-            points.push(phase_noise.noise(x, y));
+            points.push(phase_noise.noise(v));
             points.push(0.0);
         }
     }
@@ -133,6 +147,8 @@ pub fn rand_surface(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
         }
     }
 }
+
+
 
 
 // shading algorithm

@@ -1,71 +1,90 @@
-use getrandom;
-
-pub fn rand_float() -> f32 {
-   let mut buff = [0; 2];
-   getrandom::getrandom(&mut buff).unwrap();
-   let (a, b) = (buff[0] as f32, buff[1] as f32);
-   (a*255.0+b) / (65536.0)
-}
-
-type Point = (f32, f32);
+use super::random;
+use super::V3;
 
 pub struct Perlin {
-    values: Vec<Point>,
-    range_x: Point,
-    range_y: Point,
-    x_resol: usize,
-    y_resol: usize,
+    values: Vec<V3>,
+    range: (V3, V3),
+    resol: (usize, usize, usize),
     scale_x: f32,
     scale_y: f32,
+    scale_z: f32,
+    amplitude: f32,
 }
 
-fn dot(a: Point, b: Point) -> f32 {
-    a.0 * b.0 + a.1 + b.1
-}
 
 impl Perlin {
-    pub fn new(range_x: Point, range_y: Point, 
-               x_resol: usize, y_resol: usize, amplitude: f32) -> Self {
-
-        let values = (0..x_resol*y_resol).map(
-            |_| (rand_float()*amplitude, rand_float()*amplitude))
+    pub fn new(range: (V3, V3), resol: (usize, usize, usize), amplitude: f32) -> Self {
+        let values = (0..resol.0*resol.1*resol.2)
+            .map(|_| random::rand_v3())
             .collect();
 
-        let scale_x = (x_resol as f32)/(range_x.1-range_x.0);
-        let scale_y = (y_resol as f32)/(range_y.1-range_y.0);
-        Self {values, range_x, range_y, x_resol, y_resol, scale_x, scale_y}
-        }
+        let scale_x = (resol.0 as f32 - 1.0)/(range.1.x-range.0.x);
+        let scale_y = (resol.1 as f32 - 1.0)/(range.1.y-range.0.y);
+        let scale_z = (resol.2 as f32 - 1.0)/(range.1.z-range.0.z);
 
-    fn grad(&self, x: usize, y: usize) -> Point {
-        self.values[y*self.x_resol+x]
+        Self {values, range, resol, scale_x, scale_y, scale_z, amplitude}
     }
 
-    pub fn noise(&self, x: f32, y: f32) -> f32 {
-        let x = (x-self.range_x.0) * self.scale_x;
-        let y = (y-self.range_y.0) * self.scale_y;
+    fn grad(&self, x: usize, y: usize, z: usize) -> V3 {
+        self.values[
+            z*self.resol.0*self.resol.1
+            +y*self.resol.0
+            +x]
+    }
 
-        // corners of the cell
-        let x0 = x.floor();
-        let y0 = y.floor();
-        let x1 = x0 + 1.0;
-        let y1 = y0 + 1.0;
+    pub fn noise(&self, v: V3) -> f32 {
+        // map point to grid space
+        let v = V3::new(
+            (v.x - self.range.0.x)*self.scale_x,
+            (v.y - self.range.0.y)*self.scale_y,
+            (v.z - self.range.0.z)*self.scale_z,
+        );
 
-        let tx = x - x0;
-        let ty = y - y0;
-        
+        // first corner of the cell
+        let c0 = V3::new(
+            v.x.floor(),
+            v.y.floor(),
+            v.z.floor(),
+        );
+
+        // second corner of the cell
+        let c1 = V3::new(
+            c0.x+1.0,
+            c0.y+1.0,
+            c0.z+1.0,
+        );
+
+        let ux0 = c0.x as usize; let ux1 = c1.x as usize;
+        let uy0 = c0.y as usize; let uy1 = c1.y as usize;
+        let uz0 = c0.z as usize; let uz1 = c1.z as usize;
+
+        let t0 = v-c0; // vector between the point and the first corner
+        let t1 = v-c1; // vector between the point and the other corner
+
         // interpolation function
         let interpolate = |a0, a1, w| (a1-a0)*(3.0-2.0*w)*w*w+a0;
 
+        // calculate a value for each corner
+        let c000 = V3::dot(V3::new(t0.x, t0.y, t0.z), self.grad(ux0, uy0, uz0));
+        let c001 = V3::dot(V3::new(t0.x, t0.y, t1.z), self.grad(ux0, uy0, uz1));
+        let c010 = V3::dot(V3::new(t0.x, t1.y, t0.z), self.grad(ux0, uy1, uz0));
+        let c011 = V3::dot(V3::new(t0.x, t1.y, t1.z), self.grad(ux0, uy1, uz1));
+        let c100 = V3::dot(V3::new(t1.x, t0.y, t0.z), self.grad(ux1, uy0, uz0));
+        let c101 = V3::dot(V3::new(t1.x, t0.y, t1.z), self.grad(ux1, uy0, uz1));
+        let c110 = V3::dot(V3::new(t1.x, t1.y, t0.z), self.grad(ux1, uy1, uz0));
+        let c111 = V3::dot(V3::new(t1.x, t1.y, t1.z), self.grad(ux1, uy1, uz1));
 
-        let top_left    = dot((x-x0, y-y0), self.grad(x as usize  , y as usize  ));
-        let top_right   = dot((x-x1, y-y0), self.grad(x as usize+1, y as usize  ));
-        let bottom_left = dot((x-x0, y-y1), self.grad(x as usize  , y as usize+1));
-        let bottom_right= dot((x-x1, y-y1), self.grad(x as usize+1, y as usize+1));
-
-
-        interpolate(interpolate(top_left,    top_right,    tx),
-                    interpolate(bottom_left, bottom_right, tx),
-                    ty)
+        // and combine them
+        interpolate(
+            interpolate(
+                interpolate(c000, c001, t0.z),
+                interpolate(c010, c011, t0.z),
+                t0.y),
+            interpolate(
+                interpolate(c100, c101, t0.z),
+                interpolate(c110, c111, t0.z),
+                t0.y),
+            t0.x) * self.amplitude
     }
 }
 
