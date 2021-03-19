@@ -23,7 +23,8 @@ fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radi
     let pi = 3.15;
 
     let range = (V3::new(-2.1, -2.1, -2.1), V3::new(2.1, 2.1, 2.1));
-    let phase_noise = noise::Perlin::new(range, (5, 5, 5), 1.5);
+    let shape_noise = noise::Perlin::new(range, (4, 4, 4), 2.4);
+    let phase_noise = noise::Perlin::new(range, (8, 8, 8), 1.5);
 
     // create points
     for long in 0..n {
@@ -37,15 +38,15 @@ fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radi
                 a2.cos()         ,
             );
 
-            points.push(center.x+p.x*radius); // x
-            points.push(center.y+p.y*radius); // y
-            points.push(center.z+p.z*radius); // z
+            points.push(center.x+p.x*radius*(1.4+shape_noise.noise(p))); // x
+            points.push(center.y+p.y*radius*(1.4+shape_noise.noise(p))); // y
+            points.push(center.z+p.z*radius*(1.4+shape_noise.noise(p))); // z
 
             points.push(color.0); // r
             points.push(color.1); // g
             points.push(color.2); // b
 
-            let v = random::rand_v3();
+            let v = p.scale(0.2)+random::rand_v3().scale(0.3);
             points.push(v.x);
             points.push(v.y);
             points.push(v.z);
@@ -89,7 +90,7 @@ pub fn test_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
         let v = random::rand_v3().scale(20.0+rand_float()*40.0);
         let center = V3::new(v.x, v.y, 2.0+rand_float()*8.0);
         let color = (rand_float(), rand_float(), rand_float());
-        pseudo_sphere(points, indices, center, rand_float(), color);
+        pseudo_sphere(points, indices, center, 0.5+rand_float(), color);
     }
 }
 
