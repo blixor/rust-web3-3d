@@ -1,4 +1,4 @@
-pkg/
+wasm/
 target/
 Cargo.lock
 my_build.sh
