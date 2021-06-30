@@ -1,6 +1,6 @@
 # 3d Art in your browser !
 
-![](img/demo.png)
+![](screenshot/demo.png)
 
 This repository is an experiment showing what you can do with wasm, rust and webgl, a powerfull 3d rasterization engine.
 It's gpu accelerated !
