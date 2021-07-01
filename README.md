@@ -32,3 +32,6 @@ git clone https://github.com/rambip/web-3d
 npm install
 npm start
 ```
+
+You will get an error at first, but wait for everything to compile and ther reload the page.
+It's work in progress, soon you will not have this issue :wink: !
