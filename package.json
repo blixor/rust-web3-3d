@@ -1,7 +1,6 @@
 {
     "scripts": {
-        "start": "snowpack dev",
-        "build": "snowpack build"
+        "start": "snowpack build && snowpack dev",
     },
     "devDependencies": {
         "snowpack": "^3.7.1",
