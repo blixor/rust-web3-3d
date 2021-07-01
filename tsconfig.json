@@ -2,8 +2,7 @@
   "compilerOptions": {
     "baseUrl": "./",
     "paths": {
-      "@wasm": ["./wasm/pkg/"],
-      "unrelated": ["./unrelated/pkg/"]
+      "@wasm": ["./wasm/pkg/"]
     }
   }
 }
