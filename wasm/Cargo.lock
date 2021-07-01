@@ -151,7 +151,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7148f4696fb4960a346eaa60bbfb42a1ac4ebba21f750f75fc1375b098d5ffa"
 
 [[package]]
-name = "wasm-web-3d"
+name = "web-3d"
 version = "0.1.0"
 dependencies = [
  "getrandom",

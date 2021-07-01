@@ -1,5 +1,5 @@
 [package]
-name = "wasm-web-3d"
+name = "web-3d"
 version = "0.1.0"
 authors = ["rambip"]
 edition = "2018"
@@ -20,6 +20,3 @@ features = [
   'WebGlUniformLocation',
   'console',
 ]
-
-# [package.metadata.wasm-pack.profile.release]
-# wasm-opt = false
