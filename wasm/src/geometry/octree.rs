@@ -38,7 +38,7 @@ impl<T> Index<bool> for Couple<T> {
 
 impl<T> Couple<T> {
     // TODO: rename
-    fn new(mut f: impl FnMut(bool) -> T) -> Self {
+    fn generate(mut f: impl FnMut(bool) -> T) -> Self {
         Self(f(false), f(true))
     }
     // execute a function on each item
@@ -49,8 +49,8 @@ impl<T> Couple<T> {
     fn map<S>(&self, f:impl Fn(&T) -> S) -> Couple<S> {
         Couple (f(&self.0), f(&self.1))
     }
-    fn fusion(&self, f:impl Fn(&T, &T) -> T) -> T {
-        f(&self.0, &self.1)
+    fn fusion(self, f:impl Fn(T, T) -> T) -> T {
+        f(self.0, self.1)
     }
 }
 
@@ -58,8 +58,8 @@ impl<T> Couple<Couple<T>> {
     fn map2<S>(&self, f:impl Fn(&T) -> S) -> Couple<Couple<S>> {
         Couple (self.0.map(&f), self.1.map(&f))
     }
-    fn fusion2(&self, f:impl Fn(&T, &T) -> T) -> T {
-        f(&self.0.fusion(&f), &self.1.fusion(&f))
+    fn fusion2(self, f:impl Fn(T, T) -> T) -> T {
+        f(self.0.fusion(&f), self.1.fusion(&f))
     }
 }
 
@@ -67,8 +67,8 @@ impl<T> Couple<Couple<Couple<T>>> {
     fn map3<S>(&self, f:impl Fn(&T) -> S) -> Couple<Couple<Couple<S>>> {
         Couple (self.0.map2(&f), self.1.map2(&f))
     }
-    fn fusion3(&self, f:impl Fn(&T, &T) -> T) -> T {
-        f(&self.0.fusion2(&f), &self.1.fusion2(&f))
+    fn fusion3(self, f:impl Fn(T, T) -> T) -> T {
+        f(self.0.fusion2(&f), self.1.fusion2(&f))
     }
 }
 
@@ -113,6 +113,13 @@ pub enum Node {
 }
 
 impl Node {
+    fn get_state(&self) -> Option<bool>{
+        match self {
+            Node::Empty => Some(false),
+            Node::Full => Some(true),
+            _ => None
+        }
+    }
     fn approximate<S: Dist>(corner: V3, half_size: V3, shape: &S, depth: usize) -> Node {
         // approximate distance function with octree
         let center = corner + half_size;
@@ -130,10 +137,13 @@ impl Node {
                 Node::Full
             }
             else {
-                let cubes = Couple::new(|bx| Couple::new(|by| Couple::new(|bz| 
-                            Node::approximate(
+                let cubes = Couple::generate(
+                    |bx| Couple::generate(
+                        |by| Couple::generate(
+                            |bz| Node::approximate(
                                 corner + sub_corner(half_size, bx, by, bz),
-                                half_size.scale(0.5), shape, depth-1))));
+                                half_size.scale(0.5), shape, depth-1)))
+                    );
 
                 Node::Sub(Box::new(cubes))
             }
@@ -194,18 +204,18 @@ impl BoolLike for Node {
                 let fusion = cubes
                     // get a single State representing if they are 
                     // all `empty` or all `full`
-                    .map3(|node| Some(node)) // TODO: fix
+                    .map3(|node| node.get_state()) // TODO: fix
                     .fusion3(
                         |a, b|  match (a, b) {
-                            (Some(&Node::Empty), Some(&Node::Empty)) => Some(&Node::Empty),
-                            (Some(&Node::Full), Some(&Node::Full)) => Some(&Node::Empty),
+                            (Some(false), Some(false)) => Some(false),
+                            (Some(true), Some(true)) => Some(true),
                              _ => None,
                     });
 
                 // if the new contain only empty or full blocks, return one of them
                 match fusion {
-                    Some(Node::Empty) => Node::Full,
-                    Some(Node::Full) => Node::Empty,
+                    Some(false) => Node::Empty,
+                    Some(true) => Node::Full,
                     _ => Node::Sub(Box::new(cubes))
                 }
             },
@@ -230,18 +240,18 @@ impl BoolLike for Node {
                 let fusion = cubes
                     // get a single State representing if they are 
                     // all `empty` or all `full`
-                    .map3(|node| Some(node)) // TODO: fix
+                    .map3(|node| node.get_state()) // TODO: fix
                     .fusion3(
                         |a, b| match (a, b) {
-                            (Some(&Node::Empty), Some(&Node::Empty)) => Some(&Node::Empty),
-                            (Some(&Node::Full), Some(&Node::Full)) => Some(&Node::Empty),
+                            (Some(false), Some(false)) => Some(false),
+                            (Some(true), Some(true)) => Some(true),
                              _ => None,
                     });
 
                 // if the new contain only empty or full blocks, return one of them
                 match fusion {
-                    Some(Node::Empty) => Node::Full,
-                    Some(Node::Full) => Node::Empty,
+                    Some(false) => Node::Empty,
+                    Some(true) => Node::Full,
                     _ => Node::Sub(Box::new(cubes))
                 }
             },

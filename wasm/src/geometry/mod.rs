@@ -3,7 +3,7 @@ use vec_3d::V3;
 
 mod noise;
 mod random;
-//mod octree;
+mod octree;
 
 // a vertex currently has 12 values: x, y, z  |  r, g, b and so on
 const SIZE_VERTEX : usize = 12;
