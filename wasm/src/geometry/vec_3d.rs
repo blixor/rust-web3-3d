@@ -38,6 +38,11 @@ impl Sub for V3 {
     }
 }
 
+impl From<(f32, f32, f32)> for V3 {
+    fn from(t: (f32, f32, f32)) -> V3 {
+        Self {x: t.0, y: t.1, z: t.2}
+    }
+}
 
 impl V3 {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
@@ -48,6 +53,9 @@ impl V3 {
     }
     pub fn scale(self, k: f32) -> Self {
         Self {x: self.x * k, y: self.y * k, z: self.z * k}
+    }
+    pub fn norm(self) -> f32 {
+        V3::dot(self, self).sqrt()
     }
     pub fn normalize(self) -> Self {
         let r = fast_inverse_square_root(
@@ -66,6 +74,10 @@ impl V3 {
     }
     pub fn dot(a: V3, b: V3) -> f32 {
         a.x*b.x+a.y*b.y+a.z*b.z
+    }
+    pub fn map(&self, f: impl Fn(f32) -> f32) -> Self{
+        // consume the vector
+        Self::new(f(self.x), f(self.y), f(self.z))
     }
 }
 

@@ -3,6 +3,7 @@ use vec_3d::V3;
 
 mod noise;
 mod random;
+//mod octree;
 
 // a vertex currently has 12 values: x, y, z  |  r, g, b and so on
 const SIZE_VERTEX : usize = 12;
@@ -14,6 +15,38 @@ fn get_point(points: &Vec<f32>, i: u16) -> V3 {
         points[i],
         points[i+1],
         points[i+2])
+}
+
+
+macro_rules! push_index {
+    // ex. push_index!(indices, [9, 3, 2, 42])
+    ($array: ident, [$($x: expr),*]) => {
+        $(
+            $array.push($x as u16);
+        )*
+    };
+    // ex. push_index!(indices, tuple.[0, 2, 1, 2, 0, 1])
+    ($array: ident, $tuple: ident.[$($x: tt),*]) => {
+        $(
+            $array.push($tuple.$x as u16);
+        )*
+    };
+}
+
+macro_rules! push_point {
+    ($array:ident) => {};
+    ($array:ident, [$a:expr, $b:expr, $c:expr] $(,$tail:tt)*) => {
+        $array.push($a as f32);
+        $array.push($b as f32);
+        $array.push($c as f32);
+        push_point!($array $(,$tail)*)
+    };
+    ($array:ident, $v:expr $(,$tail:tt)*) => {
+        $array.push($v.x as f32);
+        $array.push($v.y as f32);
+        $array.push($v.z as f32);
+        push_point!($array $(,$tail)*)
+    };
 }
 
 fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radius: f32, color: (f32, f32, f32)) {
@@ -38,22 +71,16 @@ fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radi
                 a2.cos()         ,
             );
 
-            points.push(center.x+p.x*radius*(1.4+shape_noise.noise(p))); // x
-            points.push(center.y+p.y*radius*(1.4+shape_noise.noise(p))); // y
-            points.push(center.z+p.z*radius*(1.4+shape_noise.noise(p))); // z
-
-            points.push(color.0); // r
-            points.push(color.1); // g
-            points.push(color.2); // b
+            let rad_vector = p.scale(radius+shape_noise.noise(p));
 
             let v = p.scale(0.2)+random::rand_v3().scale(0.3);
-            points.push(v.x);
-            points.push(v.y);
-            points.push(v.z);
 
-            points.push(frequency);
-            points.push(phase_noise.noise(p));
-            points.push(0.0);
+            push_point!(points,
+                (center+rad_vector), // coordinates
+                (V3::from(color)), // color
+                v, // 
+                [frequency, phase_noise.noise(p), 0.0]
+            );
         }
     }
 
@@ -62,25 +89,13 @@ fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radi
         for lat in 0..n-1 {
             let i = i0 + long*n+lat;
             let p = (i, i+1, i+n, i+n+1);
-            indices.push(p.0 as u16);
-            indices.push(p.3 as u16);
-            indices.push(p.1 as u16);
-
-            indices.push(p.0 as u16);
-            indices.push(p.2 as u16);
-            indices.push(p.3 as u16);
+            push_index!(indices, p.[0, 3, 1, 0, 2, 3]);
         }
     }
     for long in 0..n-2 {
         let i = i0 + long*n;
         let p = (i+n-1, i+n, i+n+n-1, i+n+n);
-            indices.push(p.0 as u16);
-            indices.push(p.3 as u16);
-            indices.push(p.1 as u16);
-
-            indices.push(p.0 as u16);
-            indices.push(p.2 as u16);
-            indices.push(p.3 as u16);
+            push_index!(indices, p.[0, 3, 1,   0, 2, 3]);
     }
 }
 
@@ -113,38 +128,22 @@ pub fn rand_surface(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
             let v = V3::new(x, y, 0.0);
             let z = perlin_1.noise(v)+perlin_2.noise(v)-4.0;
             // position
-            points.push(x);
-            points.push(y);
-            points.push(z);
-
-            // color
-            points.push(0.7);
-            points.push(0.4);
-            points.push(0.3);
-
-            // ondulation vector
-            points.push(0.0);
-            points.push(0.0);
-            points.push(0.2);
-
-            // frequency, phase
-            points.push(1.0);
-            points.push(phase_noise.noise(v));
-            points.push(0.0);
+            push_point!(
+                points, 
+                [x, y, z],
+                [0.7, 0.4, 0.3],
+                [0.0, 0.0, 0.3],
+                [1.0, phase_noise.noise(v), 0.0]);
         }
     }
 
     for x in 0..n-1 {
         for y in 0..n-1 {
             let i = i0 + y*n+x;
+            // corners of square
             let p = (i, i+1, i+n, i+n+1);
-            indices.push(p.0 as u16);
-            indices.push(p.3 as u16);
-            indices.push(p.1 as u16);
-
-            indices.push(p.0 as u16);
-            indices.push(p.2 as u16);
-            indices.push(p.3 as u16);
+            // 3 triangles
+            push_index!(indices, p.[0, 3, 1,  0, 2, 3]);
         }
     }
 }
