@@ -1,12 +1,13 @@
-use std::ops::Index;
+use std::ops::{Index, IndexMut};
+use std::cell::RefCell;
+use array_init::array_init;
 
 use super::V3;
+use super::Dist;
+use super::Range;
+use super::random::rand_v3;
 
-
-pub trait Dist {
-    // signed distance function
-    fn dist(&self, point: V3) -> f32;
-}
+use super::console;
 
 // bool structure: intersection, union and negation
 trait BoolLike {
@@ -16,275 +17,481 @@ trait BoolLike {
 }
 
 
-#[derive(PartialEq)]
-struct Couple<T>(T, T);
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+struct CubeCorner (usize);
 
+impl CubeCorner {
+    fn bools(self) -> [bool; 3] {
+        self.into()
+    }
+}
 
-impl<T> Index<bool> for Couple<T> {
+impl From<[bool; 3]> for CubeCorner {
+    fn from(c: [bool; 3]) -> CubeCorner {
+        CubeCorner(
+            c.iter()
+            .enumerate()
+            .map(|(i, &b)| if b {1<<i} else {0})
+            .sum()
+        )
+    }
+}
+
+impl From<CubeCorner> for [bool; 3] {
+    fn from(t: CubeCorner) -> [bool; 3] {
+        let id = t.0;
+        array_init::array_init(
+            |i| id>>i & 1 != 0
+        )
+    }
+}
+
+impl<T> Index<CubeCorner> for [T; 8] {
     type Output = T;
-
-    fn index(&self, b: bool) -> &Self::Output {
-        if b {&self.0} else {&self.1}
+    fn index(&self, i: CubeCorner) -> &Self::Output {
+        self.index(i.0)
     }
 }
 
 
-//                  _                              _   _             
-// __ ___ _  _ _ __| |___   ___ _ __  ___ _ _ __ _| |_(_)___ _ _  ___
-/// _/ _ \ || | '_ \ / -_) / _ \ '_ \/ -_) '_/ _` |  _| / _ \ ' \(_-<
-//\__\___/\_,_| .__/_\___| \___/ .__/\___|_| \__,_|\__|_\___/_||_/__/
-//            |_|              |_|                                   
 
-
-impl<T> Couple<T> {
-    // TODO: rename
-    fn generate(mut f: impl FnMut(bool) -> T) -> Self {
-        Self(f(false), f(true))
-    }
-    // execute a function on each item
-    fn each(&self, mut f: impl FnMut(&T, bool)) {
-        f(&self.0, false); f(&self.1, true)
-    }
-    // a map implementation on the 2 items
-    fn map<S>(&self, f:impl Fn(&T) -> S) -> Couple<S> {
-        Couple (f(&self.0), f(&self.1))
-    }
-    fn fusion(self, f:impl Fn(T, T) -> T) -> T {
-        f(self.0, self.1)
+impl<T> IndexMut<CubeCorner> for [T; 8] {
+    fn index_mut(&mut self, i: CubeCorner) -> &mut T {
+        self.index_mut(i.0)
     }
 }
 
-impl<T> Couple<Couple<T>> {
-    fn map2<S>(&self, f:impl Fn(&T) -> S) -> Couple<Couple<S>> {
-        Couple (self.0.map(&f), self.1.map(&f))
-    }
-    fn fusion2(self, f:impl Fn(T, T) -> T) -> T {
-        f(self.0.fusion(&f), self.1.fusion(&f))
-    }
-}
-
-impl<T> Couple<Couple<Couple<T>>> {
-    fn map3<S>(&self, f:impl Fn(&T) -> S) -> Couple<Couple<Couple<S>>> {
-        Couple (self.0.map2(&f), self.1.map2(&f))
-    }
-    fn fusion3(self, f:impl Fn(T, T) -> T) -> T {
-        f(self.0.fusion2(&f), self.1.fusion2(&f))
-    }
-}
-
-pub fn sub_corner(half_size: V3, bx: bool, by: bool, bz: bool) -> V3 {
-    V3::new(
-        Couple(0.0, half_size.x)[bx],
-        Couple(0.0, half_size.y)[by],
-        Couple(0.0, half_size.z)[bz]
+pub fn sub_corner(corner_pos: V3, half_size: V3, corner: [bool; 3]) -> V3 {
+    corner_pos + V3::new(
+        if corner[0] {half_size.x} else {0.0},
+        if corner[1] {half_size.y} else {0.0},
+        if corner[2] {half_size.z} else {0.0},
     )
-}
-
-impl<T> BoolLike for Couple<T> where T: BoolLike {
-    fn union(a: Self, b: Self) -> Self {
-        Couple (
-            T::union(a.0, b.0),
-            T::union(a.1, b.1),
-        )
-    }
-    fn inter(a: Self, b: Self) -> Self {
-        Couple (
-            T::inter(a.0, b.0),
-            T::inter(a.1, b.1),
-        )
-    }
-    fn not(self) -> Self {
-        Couple ( self.0.not(), self.1.not() )
-    }
 }
 
 //              _     
 // _ _  ___  __| |___ 
 //| ' \/ _ \/ _` / -_)
 //|_||_\___/\__,_\___|
-                    
-type Subcubes = Box<Couple<Couple<Couple<Node>>>>;
 
-pub enum Node {
-    Sub(Subcubes), // subcubes
-    Point(V3), // point
-    Empty, // completely outside
-    Full, // completely inside
+type NodeIndex = [i32; 3];
+
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+enum NodeState {
+    Inside,
+    Outside
 }
 
-impl Node {
-    fn get_state(&self) -> Option<bool>{
+use NodeState::{Inside, Outside};
+
+/// NodeState: can be inside or outside
+impl NodeState {
+    fn opposite(self) -> Self {
         match self {
-            Node::Empty => Some(false),
-            Node::Full => Some(true),
-            _ => None
+            Inside => Outside,
+            Outside => Inside,
         }
     }
-    fn approximate<S: Dist>(corner: V3, half_size: V3, shape: &S, depth: usize) -> Node {
+}
+
+#[derive(Debug)]
+struct TempInfo {
+    cube_indices: Option<[usize; 8]>
+}
+
+impl Default for TempInfo {
+    fn default() -> TempInfo {
+        TempInfo {cube_indices:None}
+    }
+}
+
+/// The Node object for the octree.
+/// it can be either:
+/// - a Cell (or leaf) that contain a refcell to a struct. This is the end of the recursion, at max
+/// depth
+/// - a State, `Inside` or `Outside`.
+/// That means that this region of space is completely inside the shape or outside the shape
+/// - 8 Subcubes (a cube is splited into 2 in the 3 directions of space)
+enum Node {
+    Sub([Box<Node>; 8]), 
+    Cell(RefCell<TempInfo>),
+    Completely(NodeState),
+}
+
+impl Node where {
+    /// Get state of the cell. 
+    /// if completely outside or inside, return it.
+    /// otherwise null
+    fn get_state(&self) -> Option<NodeState> {
+        if let Node::Completely(s) = self {
+            Some(*s)
+        }
+        else {None}
+    }
+
+    /// index cell with 3 numbers
+    fn index(&self, id: NodeIndex, depth: u8) -> Result<&RefCell<TempInfo>, NodeState> {
+        match self {
+            Node::Sub(cubes) => {
+                let m = 1 << (depth-1);
+                let corner = map_array(id, |v| v >= m);
+                cubes[CubeCorner::from(corner)]
+                    .index(
+                        map_array(id, |x| x%m),
+                        depth-1
+                    )
+            }
+            Node::Cell(x) => Ok(x),
+            Node::Completely(s) => Err(*s),
+        }
+    }
+
+    /// get all references to the cells with corresponding index
+    fn get_cells_with_indices<'a>(&'a self, id: NodeIndex, depth: u8, result: &mut Vec<(NodeIndex, &'a RefCell<TempInfo>)>) {
+        match self {
+            Node::Sub(cubes) => {
+                let m = 1 << (depth-1);
+                for i in 0..8 {
+                    let corner = CubeCorner(i).bools();
+                    let new_id = array_init(|d| id[d] + if corner[d] {m} else {0});
+                    cubes[i].get_cells_with_indices(new_id, depth-1, result);
+                }
+            }
+            Node::Cell(x) => result.push((id, x)),
+            _ => (),
+        }
+    }
+
+    /// approximate a distance function.
+    /// TODO: use a Range instead of 2 V3
+    fn approximate(corner: V3, half_size: V3, shape: &impl Dist, depth: u8) -> Self {
         // approximate distance function with octree
         let center = corner + half_size;
+        // calculate the distance from the center to the nearest point of the shape
         let dist = shape.dist(center);
 
-        if depth == 0 {
-            Node::Point(center)
+        // calculate the size of the diagonal (from the center to a corner)
+        let diag = half_size.norm();
+
+        if dist > diag { 
+            // if distance is greater than the diagonal, it is outside
+            Node::Completely(Outside)
+        }
+        else if dist < -diag {
+            // same thing with opposite sign: we are inside
+            Node::Completely(Inside)
         }
         else {
-            let diag = half_size.norm();
-            if dist > diag { // if distance is 
-                Node::Empty
-            }
-            else if dist < -diag {
-                Node::Full
+            if depth == 0 {
+                // if max depth, add the center of the cell as a leaf
+                Node::Cell(RefCell::new(TempInfo::default()))
             }
             else {
-                let cubes = Couple::generate(
-                    |bx| Couple::generate(
-                        |by| Couple::generate(
-                            |bz| Node::approximate(
-                                corner + sub_corner(half_size, bx, by, bz),
-                                half_size.scale(0.5), shape, depth-1)))
-                    );
-
-                Node::Sub(Box::new(cubes))
-            }
-        }
-    }
-
-
-    fn find_points_in(&self, corner: V3, half_size: V3, min_p: V3, max_p: V3, points: &mut Vec<V3>) {
-        // find all the points in this zone in the octree
-        let corner2 = corner + half_size.scale(0.5);
-        let x_range = corner.x < max_p.x && min_p.x < corner2.x;   
-        let y_range = corner.y < max_p.y && min_p.y < corner2.y;   
-        let z_range = corner.z < max_p.z && min_p.z < corner2.z;   
-
-        if x_range && y_range && z_range {
-            match self {
-                Node::Sub(cubes) => 
-                    cubes.each(|x, bx|
-                        x.each(|y, by|
-                            y.each(|node, bz|
-                                node.find_points_in(corner+sub_corner(half_size, bx, by, bz), half_size.scale(0.5), min_p, max_p, points)
-                            )
+                // Otherwise, generate 8 subcubes
+                Node::Sub(array_init(|i|
+                        Box::new(Node::approximate(
+                                sub_corner(corner, half_size, CubeCorner(i).into()),
+                                half_size.scale(0.5),
+                                shape, 
+                                depth-1)
                         )
-                    ),
-                Node::Point(p) => points.push(*p),
-                _ => ()
+                ))
             }
-        }
-    }
-
-    fn get_points(&self, points: &mut Vec<V3>) {
-        match self {
-            Node::Sub(cubes) => 
-                cubes.each(|x, _|
-                    x.each(|y, _|
-                        y.each(|node, _| 
-                            node.get_points(points)
-                        )
-                    )
-                ),
-
-            Node::Point(p) => {
-                points.push(*p);
-            },
-            _ => ()
         }
     }
 }
 
-impl BoolLike for Node {
+
+/// zip 2 arrays with a function.
+/// Soon, map and zip will be part of stable-rust !!!
+fn zip_array_with<T, S, F, const N: usize>(a: [T; N], b: [T; N], mut f: F) -> [S; N] 
+where F: FnMut(T, T) -> S
+{
+    use array_init::from_iter;
+    use std::array::IntoIter;
+    let zip = IntoIter::new(a).zip(IntoIter::new(b));
+    from_iter(zip
+        .map(|(a, b)| f(a, b))
+    ).unwrap()
+}
+
+/// map an array with a function.
+/// this will also be part of rust soon
+fn map_array<T, S, F, const N: usize>(a: [T; N], f: F) -> [S; N] 
+where F: FnMut(T) -> S
+{
+    use array_init::from_iter;
+    use std::array::IntoIter;
+    let iter = IntoIter::new(a);
+    from_iter(iter
+        .map(f)
+    ).unwrap()
+}
+
+
+impl BoolLike for Node 
+{
     fn union(a: Self, b: Self) -> Self {
         // union of 2 octree nodes at the same location
         match (a, b) {
             (Node::Sub(cubes_a), Node::Sub(cubes_b)) => {
                 // calculate the union of the sub_cubes
-                let cubes = BoolLike::union(*cubes_a, *cubes_b);
+                let cubes = zip_array_with(
+                    cubes_a,
+                    cubes_b, 
+                    |a, b| Box::new(BoolLike::union(*a, *b))
+                );
 
-                let fusion = cubes
-                    // get a single State representing if they are 
-                    // all `empty` or all `full`
-                    .map3(|node| node.get_state()) // TODO: fix
-                    .fusion3(
-                        |a, b|  match (a, b) {
-                            (Some(false), Some(false)) => Some(false),
-                            (Some(true), Some(true)) => Some(true),
-                             _ => None,
-                    });
+                let mut fusion = cubes[0].get_state();
+                for c in &cubes {
+                    fusion = match (fusion, c.get_state()) {
+                        (Some(Outside), Some(Outside)) => Some(Outside),
+                        (Some(Inside), Some(Inside)) => Some(Inside),
+                        _ => None,
+                    };
+                }
 
                 // if the new contain only empty or full blocks, return one of them
                 match fusion {
-                    Some(false) => Node::Empty,
-                    Some(true) => Node::Full,
-                    _ => Node::Sub(Box::new(cubes))
+                    Some(state) => Node::Completely(state.opposite()),
+                    None => Node::Sub(cubes)
                 }
             },
             // if one is empty, return the other
-            (Node::Empty, b) => b,
-            (a, Node::Empty) => a,
+            (Node::Completely(Outside), b) => b,
+            (a, Node::Completely(Outside)) => a,
             // if one is full, return full
-            (Node::Full, _) => Node::Full,
-            (_, Node::Full) => Node::Full,
+            (Node::Completely(Inside), _) => Node::Completely(Inside),
+            (_, Node::Completely(Inside)) => Node::Completely(Inside),
             // if one is point, return it
-            (Node::Point(p), _) => Node::Point(p),
-            (_, Node::Point(p)) => Node::Point(p),
+            (Node::Cell(x), _) => Node::Cell(x),
+            (_, Node::Cell(x)) => Node::Cell(x),
         }
     }
+
     fn inter(a: Self, b: Self) -> Self {
-        // union of 2 octree nodes at the same location
+        // intersection of 2 octree nodes at the same location
         match (a, b) {
             (Node::Sub(cubes_a), Node::Sub(cubes_b)) => {
-                // calculate the union of the sub_cubes
-                let cubes = BoolLike::inter(*cubes_a, *cubes_b);
+                // calculate the intersection of the sub_cubes
+                let cubes = zip_array_with(
+                    cubes_a,
+                    cubes_b, 
+                    |a, b| Box::new(BoolLike::inter(*a, *b))
+                );
 
-                let fusion = cubes
-                    // get a single State representing if they are 
-                    // all `empty` or all `full`
-                    .map3(|node| node.get_state()) // TODO: fix
-                    .fusion3(
-                        |a, b| match (a, b) {
-                            (Some(false), Some(false)) => Some(false),
-                            (Some(true), Some(true)) => Some(true),
-                             _ => None,
-                    });
+                let mut fusion = cubes[0].get_state();
+                for c in &cubes {
+                    fusion = match (fusion, c.get_state()) {
+                        (Some(Outside), Some(Outside)) => Some(Outside),
+                        (Some(Inside), Some(Inside)) => Some(Inside),
+                        _ => None,
+                    };
+                }
 
                 // if the new contain only empty or full blocks, return one of them
                 match fusion {
-                    Some(false) => Node::Empty,
-                    Some(true) => Node::Full,
-                    _ => Node::Sub(Box::new(cubes))
+                    Some(state) => Node::Completely(state.opposite()),
+                    None => Node::Sub(cubes)
                 }
             },
             // if one is full, return the other
-            (Node::Full, b) => b,
-            (a, Node::Full) => a,
+            (Node::Completely(Inside), b) => b,
+            (a, Node::Completely(Inside)) => a,
             // if one is empty, return empty
-            (Node::Empty, _) => Node::Empty,
-            (_, Node::Empty) => Node::Empty,
-            // if one is point, return it
-            (Node::Point(p), _) => Node::Point(p),
-            (_, Node::Point(p)) => Node::Point(p),
+            (Node::Completely(Outside), _) => Node::Completely(Outside),
+            (_, Node::Completely(Outside)) => Node::Completely(Outside),
+            // if one is leaf, return it
+            (Node::Cell(x), _) => Node::Cell(x),
+            (_, Node::Cell(x)) => Node::Cell(x),
         }
     }
+
     fn not(self) -> Self {
         match self {
-            Node::Sub(cubes) => Node::Sub(Box::new((*cubes).not())),
-            Node::Point(id) => Node::Point(id),
-            Node::Empty => Node::Full,
-            Node::Full => Node::Empty,
+            Node::Sub(cubes) => Node::Sub(map_array(cubes, |c| Box::new(c.not()))),
+            Node::Cell(x) => Node::Cell(x),
+            Node::Completely(state) => Node::Completely(state.opposite()),
         }
     }
 }
 
+
 pub struct Octree {
-    dim: V3,
-    depth: usize,
-    root: Node
+    range: Range,
+    depth: u8,
+    root: Node,
+    scale: V3,
 }
 
 
 impl Octree {
-    // TODO: constructor with distance function and range
-    //       define what is a range in v3
-    //pub fn triangulate(&mut self, point_array: Float32Array, triangles: Uint16Array
+    fn index(&self, id: NodeIndex) -> Result<&RefCell<TempInfo>, NodeState> {
+        let max_id = 1 << self.depth;
+        if id.iter().all(|&n| n >= 0 && n < max_id)
+        {
+            // if index is inside the octree
+            self.root.index(id, self.depth)
+        }
+        else {
+            // otherwise return error
+            Err(Outside)
+        }
+    }
+
+    /// give the position in space that correspond to an index in this octree
+    fn index_to_point(&self, pos: NodeIndex) -> V3 {
+        let vec_from_corner = V3::new(
+            (pos[0] as f32) * self.scale.x,
+            (pos[1] as f32) * self.scale.y,
+            (pos[2] as f32) * self.scale.z,
+        );
+        vec_from_corner + self.range.smaller_corner
+    }
+
+    /// get all cells and indices inside the octree.
+    fn get_cells_with_indices(&self) -> Vec<(NodeIndex, &RefCell<TempInfo>)> {
+        let mut result = Vec::new();
+        self.root.get_cells_with_indices([0, 0, 0], self.depth, &mut result);
+        result
+    }
+
+    /// approximate a distance function with an octree.
+    /// `d`: struct that implement a distance function
+    /// `range`: range of the octree (region of space in a tile)
+    /// `depth`: depth you want (maximum 8)
+    pub fn new_from_dist(d: impl Dist, range: Range, depth: u8) -> Self {
+        let size = range.diagonal();
+        let root = Node::approximate(range.smaller_corner, size.scale(0.5), &d, depth);
+        let max_index = (1<<depth)-1;
+        let scale = V3::new(
+            size.x / (max_index as f32),
+            size.y / (max_index as f32),
+            size.z / (max_index as f32),
+        );
+        Self {range, depth, root, scale}
+    }
+
+    /// triangulate octree with the surface-net algorithm
+    pub fn triangulate(&self, point_array: &mut Vec<f32>, index_array: &mut Vec<u16>) {
+        // get all cells in octree with the corresponding indices
+        let all_cells = self.get_cells_with_indices();
+
+        log!("number of cells: {:?}", all_cells.len());
+        // for each cell in the octree, set index of all the corners
+        for (cell_pos, x) in &all_cells {
+
+            // get 6 neighbourgs of current cell
+            let neighbourgs: [[Result<&RefCell<TempInfo>, NodeState>; 2]; 3] = array_init(
+                |dim| array_init(
+                    |side| self.index({
+                        let mut id = cell_pos.clone();
+                        id[dim] = if side==1 {id[dim]+1} else {id[dim]-1};
+                        id
+                    })
+                )
+            );
+
+            // modify temp value with new indices
+            let mut temp_ref = x.borrow_mut();
+
+            (*temp_ref).cube_indices = Some(array_init(
+                    |i| {
+                        let mut tmp_corner_index = None;
+
+                        for d in 0..3 {
+                            // look at 3 neighbourgs cells (like up, down and front)
+                            tmp_corner_index = tmp_corner_index.or(
+                                // if there is a value defined, 
+                                neighbourgs[d][if CubeCorner(i).bools()[d] {1} else {0}]
+                                .ok()
+                                .and_then(|ref_corner| ref_corner.borrow().cube_indices)
+                                .map(|corners| corners[i^(1<<d)])
+                            );
+                        }
+                        match tmp_corner_index {
+                            // if one of the neighbourgs cell have an index for this corner, return
+                            // this number
+                            Some(id) => id,
+                            // otherwise, create a new id
+                            None => {
+                                let t = point_array.len()/12; 
+                                let col = V3::new(0.3, 0.3, 0.3)+rand_v3().scale(0.1);
+                                push_point!(point_array, self.index_to_point(*cell_pos), col, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
+                                t
+                            }
+                        }
+                    }));
+        }
+
+        for (pos, x) in &all_cells {
+            // create triangles for each cell
+            for d in 0..3 {
+                for &side in &[0, 1] {
+                    let pos_in_this_dir = {
+                        let mut new_pos = pos.clone();
+                        new_pos[d] += side*2-1;
+                        new_pos
+                    };
+
+                    if let Err(Outside) = self.index(pos_in_this_dir){
+                        // if neighbourg cell in this direction is outside, create triangles: 
+                        let points_id_in_cube = x.borrow().cube_indices.unwrap();
+                        let corners_squares = (0..8).filter(|&c| ((c as usize)>>d&1)==side as usize);
+                        let points_id_in_square: Vec<_> = corners_squares.map(|i| points_id_in_cube[i]).collect();
+                        push_index!( index_array, points_id_in_square.[0, 1, 2, 1, 3, 2]);
+                    }
+                }
+            }
+        }
+    } 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CubeCorner, Octree, Range, V3, map_array};
+    use getrandom;
+
+    #[test]
+    fn conversions() {
+        for i in 0..8 {
+            let corner = CubeCorner(i);
+            assert_eq!(corner, corner.bools().into())
+        }
+    }
+
+    #[test]
+    fn octree_indexing() {
+        let range = Range::new(
+            V3::new(-1.0, -1.0, -1.0),
+            V3::new( 1.0,  1.0,  1.0),
+        );
+        let oct = Octree::new_from_dist(|v: V3| v.x*v.x+v.y+v.y-0.5, range, 4);
+
+        for (_pos, ref_value) in oct.get_cells_with_indices() {
+            let random_numbers = {
+                let mut tmp = [0; 8];
+                getrandom::getrandom(&mut tmp).unwrap();
+                map_array(tmp, |x| x as usize)
+            };
+            ref_value.borrow_mut().cube_indices = Some(random_numbers);
+        }
+
+        for (pos, ref_value) in oct.get_cells_with_indices() {
+            assert_eq!(
+                oct.index(pos).unwrap().borrow().cube_indices, 
+                ref_value.borrow().cube_indices
+                );
+        }
+    }
+
+    #[test]
+    fn octree_triangulation() {
+        let range = Range::new(
+            V3::new(-1.0, -1.0, -1.0),
+            V3::new( 1.0,  1.0,  1.0),
+        );
+        let oct = Octree::new_from_dist(|v: V3| v.x*v.x+v.y+v.y-0.5, range, 5);
+        oct.triangulate(&mut Vec::new(), &mut Vec::new())
+    }
 }

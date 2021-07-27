@@ -1,6 +1,14 @@
 use wasm_bindgen::prelude::*;
 
 use  web_sys::console;
+
+macro_rules! log {
+    ($($msg: tt)*) => {
+        unsafe {
+            console::log_1(&format!($($msg)*).into())
+        }
+    }
+}
 use web_sys::WebGlRenderingContext as GL;
 use web_sys::WebGlUniformLocation;
 
@@ -24,7 +32,7 @@ pub struct Universe {
 impl Universe {
     #[wasm_bindgen(constructor)]
     pub fn new(gl: GL, trans_location: WebGlUniformLocation, time_location: WebGlUniformLocation, t: u32) -> Self {
-        let camera = Camera {x:2.0, y:-2.0, z:2.0, angle:1.80};
+        let camera = Camera {x:2.0, y:-2.0, z:0.0, angle:1.80};
         let engine = Engine {gl, trans_location, time_location, n_indices: 0i32};
         Self {engine, camera, n_update: 0, last_update: t}
     }
@@ -44,10 +52,11 @@ impl Universe {
 
         if self.n_update % 3000 == 0 {
             // update landscape
-            let mut points   = Vec::with_capacity(100000);
-            let mut indices = Vec::with_capacity(100000);
-            geometry::test_sphere(&mut points, &mut indices);
-            geometry::rand_surface(&mut points, &mut indices);
+            let mut points   = Vec::with_capacity(10000000);
+            let mut indices = Vec::with_capacity(10000000);
+            //geometry::test_sphere(&mut points, &mut indices);
+            geometry::test_octree_shape(&mut points, &mut indices);
+            // geometry::rand_surface(&mut points, &mut indices);
             geometry::shade(&mut points, &mut indices);
 
             self.engine.update_triangles(points, indices);
@@ -58,7 +67,7 @@ impl Universe {
 
         // debug log
         if self.n_update % 10 == 0 {
-            console::log_1(&self.camera.getinfo()[..].into());
+            log!("{}", self.camera.get_info());
         };
 
     }

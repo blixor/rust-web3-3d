@@ -1,23 +1,3 @@
-mod vec_3d;
-use vec_3d::V3;
-
-mod noise;
-mod random;
-mod octree;
-
-// a vertex currently has 12 values: x, y, z  |  r, g, b and so on
-const SIZE_VERTEX : usize = 12;
-
-
-fn get_point(points: &Vec<f32>, i: u16) -> V3 {
-    let i = i as usize*SIZE_VERTEX;
-    V3::new(
-        points[i],
-        points[i+1],
-        points[i+2])
-}
-
-
 macro_rules! push_index {
     // ex. push_index!(indices, [9, 3, 2, 42])
     ($array: ident, [$($x: expr),*]) => {
@@ -26,13 +6,14 @@ macro_rules! push_index {
         )*
     };
     // ex. push_index!(indices, tuple.[0, 2, 1, 2, 0, 1])
-    ($array: ident, $tuple: ident.[$($x: tt),*]) => {
+    ($array: ident, $arr: ident.[$($x: tt),*]) => {
         $(
-            $array.push($tuple.$x as u16);
+            $array.push($arr[$x] as u16);
         )*
     };
 }
 
+// TODO: convert that to function or export to other scripts
 macro_rules! push_point {
     ($array:ident) => {};
     ($array:ident, [$a:expr, $b:expr, $c:expr] $(,$tail:tt)*) => {
@@ -49,13 +30,49 @@ macro_rules! push_point {
     };
 }
 
+use super::console;
+
+mod noise;
+mod random;
+#[macro_use]
+mod octree;
+
+mod vec_3d;
+use vec_3d::V3;
+use vec_3d::Range;
+use vec_3d::Dist;
+
+use octree::Octree;
+
+
+// a vertex currently has 12 values: x, y, z  |  r, g, b and so on
+const SIZE_VERTEX : usize = 12;
+
+
+fn get_point(points: &Vec<f32>, i: u16) -> V3 {
+    let i = i as usize*SIZE_VERTEX;
+    V3::new(
+        points[i],
+        points[i+1],
+        points[i+2]
+    )
+}
+
+fn set_point(points: &mut Vec<f32>, i:u16, p: V3) {
+    let i = i as usize*SIZE_VERTEX;
+    points[i  ] = p.x;
+    points[i+1] = p.y;
+    points[i+2] = p.z;
+}
+
+
 fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radius: f32, color: (f32, f32, f32)) {
     let frequency = 0.3+random::rand_float();
     let i0 = points.len()/SIZE_VERTEX;
     let n = 30usize;
     let pi = 3.15;
 
-    let range = (V3::new(-2.1, -2.1, -2.1), V3::new(2.1, 2.1, 2.1));
+    let range = Range::new(V3::new(-2.1, -2.1, -2.1), V3::new(2.1, 2.1, 2.1));
     let shape_noise = noise::Perlin::new(range, (4, 4, 4), 2.4);
     let phase_noise = noise::Perlin::new(range, (8, 8, 8), 1.5);
 
@@ -88,13 +105,13 @@ fn pseudo_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>, center: V3, radi
     for long in 0..n-1 {
         for lat in 0..n-1 {
             let i = i0 + long*n+lat;
-            let p = (i, i+1, i+n, i+n+1);
+            let p = [i, i+1, i+n, i+n+1];
             push_index!(indices, p.[0, 3, 1, 0, 2, 3]);
         }
     }
     for long in 0..n-2 {
         let i = i0 + long*n;
-        let p = (i+n-1, i+n, i+n+n-1, i+n+n);
+        let p = [i+n-1, i+n, i+n+n-1, i+n+n];
             push_index!(indices, p.[0, 3, 1,   0, 2, 3]);
     }
 }
@@ -109,11 +126,34 @@ pub fn test_sphere(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
     }
 }
 
+pub fn test_octree_shape(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
+    let range = Range::new(
+        V3::new(-3.0, -3.0, -3.0),
+        V3::new(3.0, 3.0, 3.0)
+    );
+    let k = 0.7;
+    let clamp = |v, min, max| if v < min {min} else if v > max {max} else {v};
+    let smooth_min = |a:f32, b:f32| {
+        let h = clamp(0.5+0.5*(a-b)/k, 0.0, 1.0);
+        a*(1.0-h) + h*b -k*h*(1.0-h)
+    };
+    let dist_function = 
+        |p: V3| f32::min(
+            f32::min(
+                (p.x*p.x + p.y*p.y).sqrt() - 0.6,
+                (p.z*p.z + p.y*p.y).sqrt() - 0.6,
+            ),
+            (p.x*p.x+p.y*p.y + p.z*p.z).sqrt() - 1.0,
+        ) - 0.2;
+    let oct = Octree::new_from_dist(dist_function, range, 7);
+    oct.triangulate(points, indices);
+}
+
 
 
 pub fn rand_surface(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
     // we generate fractal noise with 2d slices of 3d perlin noise
-    let range = (V3::new(-100.0, -100.0, -1.0), V3::new(100.0, 100.0, 1.0));
+    let range = Range::new(V3::new(-100.0, -100.0, -1.0), V3::new(100.0, 100.0, 1.0));
     let perlin_1 = noise::Perlin::new(range, (5, 5, 3), 15.0);
     let perlin_2 = noise::Perlin::new(range, (30, 30, 3), 5.5);
 
@@ -141,7 +181,7 @@ pub fn rand_surface(points: &mut Vec<f32>, indices: &mut Vec<u16>) {
         for y in 0..n-1 {
             let i = i0 + y*n+x;
             // corners of square
-            let p = (i, i+1, i+n, i+n+1);
+            let p = [i, i+1, i+n, i+n+1];
             // 3 triangles
             push_index!(indices, p.[0, 3, 1,  0, 2, 3]);
         }

@@ -1,9 +1,10 @@
 use super::random;
 use super::V3;
+use super::Range;
 
 pub struct Perlin {
     values: Vec<V3>,
-    range: (V3, V3),
+    range: Range,
     resol: (usize, usize, usize),
     scale_x: f32,
     scale_y: f32,
@@ -13,14 +14,15 @@ pub struct Perlin {
 
 
 impl Perlin {
-    pub fn new(range: (V3, V3), resol: (usize, usize, usize), amplitude: f32) -> Self {
+    pub fn new(range: Range, resol: (usize, usize, usize), amplitude: f32) -> Self {
         let values = (0..resol.0*resol.1*resol.2)
             .map(|_| random::rand_v3())
             .collect();
 
-        let scale_x = (resol.0 as f32 - 1.0)/(range.1.x-range.0.x);
-        let scale_y = (resol.1 as f32 - 1.0)/(range.1.y-range.0.y);
-        let scale_z = (resol.2 as f32 - 1.0)/(range.1.z-range.0.z);
+        let diag = range.diagonal();
+        let scale_x = (resol.0 as f32 - 1.0)/diag.x;
+        let scale_y = (resol.1 as f32 - 1.0)/diag.y;
+        let scale_z = (resol.2 as f32 - 1.0)/diag.z;
 
         Self {values, range, resol, scale_x, scale_y, scale_z, amplitude}
     }
@@ -35,9 +37,9 @@ impl Perlin {
     pub fn noise(&self, v: V3) -> f32 {
         // map point to grid space
         let v = V3::new(
-            (v.x - self.range.0.x)*self.scale_x,
-            (v.y - self.range.0.y)*self.scale_y,
-            (v.z - self.range.0.z)*self.scale_z,
+            (v.x - self.range.smaller_corner.x)*self.scale_x,
+            (v.y - self.range.smaller_corner.y)*self.scale_y,
+            (v.z - self.range.smaller_corner.z)*self.scale_z,
         );
 
         // first corner of the cell

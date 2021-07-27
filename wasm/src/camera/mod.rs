@@ -21,7 +21,7 @@ impl Camera {
     pub fn up(&mut self, d: f32) {
         self.z += d;
     }
-    pub fn getinfo(&self) -> String {
+    pub fn get_info(&self) -> String {
         format!("x = {}, y = {}, z = {}", self.x, self.y, self.z)
     }
 

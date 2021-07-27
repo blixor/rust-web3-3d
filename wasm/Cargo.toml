@@ -7,11 +7,17 @@ edition = "2018"
 [lib]
 crate-type = ["cdylib"]
 
+[unstable]
+features = [
+    'array_map',
+    'array_zip',
+]
 
 [dependencies]
 js-sys = "0.3.35"
 wasm-bindgen = "0.2.72"
 getrandom = { version = "0.2", features = ["js"] }
+array-init = "2.0.0"
 
 [dependencies.web-sys]
 version = "0.3.4"
