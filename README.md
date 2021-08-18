@@ -16,7 +16,7 @@ After you've done that, run:
 ```bash
 cargo install cargo-watch
 ```
-And on linux, make sure the folder `~/.cargo/bin` is in your PATH variable (echo `export PATH=$PATH:~/.cargo/bin > ~/.profile` and reboot)
+And on linux, make sure the folder `~/.cargo/bin` is in your PATH variable 
 
 Then, if you use yarn (:+1:)
 
@@ -35,11 +35,9 @@ npm install
 npm start
 ```
 
-You can also use the *Nix expression*:
-```
-git clone https://github.com/rambip/web-3d
-cd web-3d
-nix-shell --pure
-yarn install
-yarn start
-```
+## Nix
+
+There is a nix-shell provided
+
+If you have nix installed, just type `nix-shell` in the repo's folder.
+After that you can `yarn install` the same way
