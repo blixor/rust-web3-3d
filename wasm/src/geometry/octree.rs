@@ -1,5 +1,6 @@
 use std::ops::{Index, IndexMut};
 use std::cell::RefCell;
+use std::rc::Rc;
 use array_init::array_init;
 
 use super::V3;
@@ -94,14 +95,20 @@ impl NodeState {
     }
 }
 
-#[derive(Debug)]
-struct TempInfo {
-    cube_indices: Option<[usize; 8]>
+impl Default for NodeState {
+    fn default() -> Self {Outside}
 }
 
-impl Default for TempInfo {
-    fn default() -> TempInfo {
-        TempInfo {cube_indices:None}
+#[derive(Debug)]
+struct CellInfo<'octree> {
+    cube_indices: RefCell<[Option<usize>; 8]>,
+    neighbourgs: [[Result<&'octree CellInfo<'octree>, NodeState>; 2]; 3],
+}
+
+impl<'octree> Default for CellInfo<'octree> {
+    fn default() -> CellInfo<'octree> {
+        let neighbourgs = array_init(|_| array_init(|_| Err(Outside)));
+        CellInfo {cube_indices:RefCell::new([None; 8]), neighbourgs}
     }
 }
 
@@ -112,13 +119,13 @@ impl Default for TempInfo {
 /// - a State, `Inside` or `Outside`.
 /// That means that this region of space is completely inside the shape or outside the shape
 /// - 8 Subcubes (a cube is splited into 2 in the 3 directions of space)
-enum Node {
-    Sub([Box<Node>; 8]), 
-    Cell(RefCell<TempInfo>),
+enum Node<'octree> {
+    Sub([Box<Node<'octree>>; 8]), 
+    Cell(CellInfo<'octree>),
     Completely(NodeState),
 }
 
-impl Node where {
+impl <'octree> Node<'octree> where {
     /// Get state of the cell. 
     /// if completely outside or inside, return it.
     /// otherwise null
@@ -130,7 +137,7 @@ impl Node where {
     }
 
     /// index cell with 3 numbers
-    fn index(&self, id: NodeIndex, depth: u8) -> Result<&RefCell<TempInfo>, NodeState> {
+    fn index(&self, id: NodeIndex, depth: u8) -> Result<&'octree CellInfo, NodeState> {
         match self {
             Node::Sub(cubes) => {
                 let m = 1 << (depth-1);
@@ -146,8 +153,25 @@ impl Node where {
         }
     }
 
+    /// index cell with 3 numbers
+    fn index_mut(&mut self, id: NodeIndex, depth: u8) -> Result<&'octree mut CellInfo, NodeState>{
+        match self {
+            Node::Sub(cubes) => {
+                let m = 1 << (depth-1);
+                let corner = map_array(id, |v| v >= m);
+                cubes[CubeCorner::from(corner)]
+                    .index_mut(
+                        map_array(id, |x| x%m),
+                        depth-1
+                    )
+            }
+            Node::Cell(x) => Ok(x),
+            Node::Completely(s) => Err(*s),
+        }
+    }
     /// get all references to the cells with corresponding index
-    fn get_cells_with_indices<'a>(&'a self, id: NodeIndex, depth: u8, result: &mut Vec<(NodeIndex, &'a RefCell<TempInfo>)>) {
+    /// useless ? 
+    fn get_cells_with_indices(&'octree self, id: NodeIndex, depth: u8, result: &mut Vec<(NodeIndex, &'octree CellInfo<'octree>)>) {
         match self {
             Node::Sub(cubes) => {
                 let m = 1 << (depth-1);
@@ -184,7 +208,7 @@ impl Node where {
         else {
             if depth == 0 {
                 // if max depth, add the center of the cell as a leaf
-                Node::Cell(RefCell::new(TempInfo::default()))
+                Node::Cell(CellInfo::default())
             }
             else {
                 // Otherwise, generate 8 subcubes
@@ -229,7 +253,7 @@ where F: FnMut(T) -> S
 }
 
 
-impl BoolLike for Node 
+impl<'octree> BoolLike for Node<'octree>
 {
     fn union(a: Self, b: Self) -> Self {
         // union of 2 octree nodes at the same location
@@ -317,21 +341,34 @@ impl BoolLike for Node
 }
 
 
-pub struct Octree {
+pub struct Octree<'octree> {
     range: Range,
     depth: u8,
-    root: Node,
+    root: Node<'octree>,
     scale: V3,
 }
 
 
-impl Octree {
-    fn index(&self, id: NodeIndex) -> Result<&RefCell<TempInfo>, NodeState> {
+impl <'octree> Octree<'octree> {
+    fn index(&'octree self, id: NodeIndex) -> Result<&'octree CellInfo<'octree>, NodeState> {
         let max_id = 1 << self.depth;
         if id.iter().all(|&n| n >= 0 && n < max_id)
         {
             // if index is inside the octree
             self.root.index(id, self.depth)
+        }
+        else {
+            // otherwise return error
+            Err(Outside)
+        }
+    }
+
+    fn index_mut(&'octree mut self, id: NodeIndex) -> Result<&'octree mut CellInfo<'octree>, NodeState> {
+        let max_id = 1 << self.depth;
+        if id.iter().all(|&n| n >= 0 && n < max_id)
+        {
+            // if index is inside the octree
+            self.root.index_mut(id, self.depth)
         }
         else {
             // otherwise return error
@@ -350,7 +387,7 @@ impl Octree {
     }
 
     /// get all cells and indices inside the octree.
-    fn get_cells_with_indices(&self) -> Vec<(NodeIndex, &RefCell<TempInfo>)> {
+    fn get_cells_with_indices(&'octree self) -> Vec<(NodeIndex, &'octree CellInfo<'octree>)> {
         let mut result = Vec::new();
         self.root.get_cells_with_indices([0, 0, 0], self.depth, &mut result);
         result
@@ -369,7 +406,25 @@ impl Octree {
             size.y / (max_index as f32),
             size.z / (max_index as f32),
         );
-        Self {range, depth, root, scale}
+        
+        let mut result =  Self {range, depth, root, scale};
+        
+        // FIXME
+        for (pos, _cell) in result.get_cells_with_indices(){ 
+            let mut cell = result.index_mut(pos).unwrap();
+            // get 6 neighbourgs of current cell
+            cell.neighbourgs = array_init(
+                |dim| array_init(
+                    |side| result.index({
+                        let mut id = pos.clone();
+                        id[dim] = if side==1 {id[dim]+1} else {id[dim]-1};
+                        id
+                    })
+                )
+            );
+        }
+
+        result
     }
 
     /// triangulate octree with the surface-net algorithm
@@ -381,69 +436,59 @@ impl Octree {
         // for each cell in the octree, set index of all the corners
         for (cell_pos, x) in &all_cells {
 
-            // get 6 neighbourgs of current cell
-            let neighbourgs: [[Result<&RefCell<TempInfo>, NodeState>; 2]; 3] = array_init(
-                |dim| array_init(
-                    |side| self.index({
-                        let mut id = cell_pos.clone();
-                        id[dim] = if side==1 {id[dim]+1} else {id[dim]-1};
-                        id
-                    })
-                )
-            );
-
             // modify temp value with new indices
-            let mut temp_ref = x.borrow_mut();
+            let indices = x.cube_indices.borrow_mut();
+            let neighbourgs = x.neighbourgs;
 
-            (*temp_ref).cube_indices = Some(array_init(
-                    |i| {
-                        let mut tmp_corner_index = None;
+            // (*temp_ref) = Some(array_init(
+            //         |i| {
+            //             let mut tmp_corner_index = None;
 
-                        for d in 0..3 {
-                            // look at 3 neighbourgs cells (like up, down and front)
-                            tmp_corner_index = tmp_corner_index.or(
-                                // if there is a value defined, 
-                                neighbourgs[d][if CubeCorner(i).bools()[d] {1} else {0}]
-                                .ok()
-                                .and_then(|ref_corner| ref_corner.borrow().cube_indices)
-                                .map(|corners| corners[i^(1<<d)])
-                            );
-                        }
-                        match tmp_corner_index {
-                            // if one of the neighbourgs cell have an index for this corner, return
-                            // this number
-                            Some(id) => id,
-                            // otherwise, create a new id
-                            None => {
-                                let t = point_array.len()/12; 
-                                let col = V3::new(0.3, 0.3, 0.3)+rand_v3().scale(0.1);
-                                push_point!(point_array, self.index_to_point(*cell_pos), col, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
-                                t
-                            }
-                        }
-                    }));
+            //             for d in 0..3 {
+            //                 // look at 3 neighbourgs cells (like up, down and front)
+            //                 tmp_corner_index = tmp_corner_index.or(
+            //                     // if there is a value defined, 
+            //                     neighbourgs[d][if CubeCorner(i).bools()[d] {1} else {0}].as_ref()
+            //                     .ok()
+            //                     .and_then(|ref_corner| ref_corner.borrow().cube_indices)
+            //                     .map(|corners| corners[i^(1<<d)])
+            //                 );
+            //             }
+            //             match tmp_corner_index {
+            //                 // if one of the neighbourgs cell have an index for this corner, return
+            //                 // this number
+            //                 Some(id) => id,
+            //                 // otherwise, create a new id
+            //                 None => {
+            //                     let t = point_array.len()/12; 
+            //                     let col = V3::new(0.3, 0.3, 0.3)+rand_v3().scale(0.1);
+            //                     push_point!(point_array, self.index_to_point(*cell_pos), col, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
+            //                     t
+            //                 }
+            //             }
+            //         }));
         }
 
-        for (pos, x) in &all_cells {
-            // create triangles for each cell
-            for d in 0..3 {
-                for &side in &[0, 1] {
-                    let pos_in_this_dir = {
-                        let mut new_pos = pos.clone();
-                        new_pos[d] += side*2-1;
-                        new_pos
-                    };
+        // for (pos, x) in &all_cells {
+        //     // create triangles for each cell
+        //     for d in 0..3 {
+        //         for &side in &[0, 1] {
+        //             let pos_in_this_dir = {
+        //                 let mut new_pos = pos.clone();
+        //                 new_pos[d] += side*2-1;
+        //                 new_pos
+        //             };
 
-                    if let Err(Outside) = self.index(pos_in_this_dir){
-                        // if neighbourg cell in this direction is outside, create triangles: 
-                        let points_id_in_cube = x.borrow().cube_indices.unwrap();
-                        let corners_squares = (0..8).filter(|&c| ((c as usize)>>d&1)==side as usize);
-                        let points_id_in_square: Vec<_> = corners_squares.map(|i| points_id_in_cube[i]).collect();
-                        push_index!( index_array, points_id_in_square.[0, 1, 2, 1, 3, 2]);
-                    }
-                }
-            }
-        }
+        //             if let Err(Outside) = self.index(pos_in_this_dir){
+        //                 // if neighbourg cell in this direction is outside, create triangles: 
+        //                 let points_id_in_cube = x.borrow().cube_indices.unwrap();
+        //                 let corners_squares = (0..8).filter(|&c| ((c as usize)>>d&1)==side as usize);
+        //                 let points_id_in_square: Vec<_> = corners_squares.map(|i| points_id_in_cube[i]).collect();
+        //                 push_index!( index_array, points_id_in_square.[0, 1, 2, 1, 3, 2]);
+        //             }
+        //         }
+        //     }
+        // }
     } 
 }
 
@@ -480,7 +525,7 @@ mod tests {
         for (pos, ref_value) in oct.get_cells_with_indices() {
             assert_eq!(
                 oct.index(pos).unwrap().borrow().cube_indices, 
-                ref_value.borrow().cube_indices
+                ref_value.cube_indices
                 );
         }
     }

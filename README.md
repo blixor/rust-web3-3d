@@ -22,6 +22,7 @@ Then, if you use yarn (:+1:)
 
 ```
 git clone https://github.com/rambip/web-3d 
+cd web-3d
 yarn install
 yarn start
 ```
@@ -29,6 +30,16 @@ yarn start
 If you use npm (:-1:)
 ```
 git clone https://github.com/rambip/web-3d
+cd web-3d
 npm install
 npm start
+```
+
+You can also use the *Nix expression*:
+```
+git clone https://github.com/rambip/web-3d
+cd web-3d
+nix-shell --pure
+yarn install
+yarn start
 ```
