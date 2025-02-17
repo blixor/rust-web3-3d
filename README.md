@@ -21,7 +21,7 @@ And on linux, make sure the folder `~/.cargo/bin` is in your PATH variable
 Then, if you use yarn (:+1:)
 
 ```
-git clone https://github.com/rambip/web-3d 
+git clone https://github.com/blixor/rust-web3-3d
 cd web-3d
 yarn install
 yarn start
@@ -29,7 +29,7 @@ yarn start
 
 If you use npm (:-1:)
 ```
-git clone https://github.com/rambip/web-3d
+git clone https://github.com/blixor/rust-web3-3d
 cd web-3d
 npm install
 npm start
